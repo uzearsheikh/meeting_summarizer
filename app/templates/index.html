@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Meeting Summarizer</title>
+
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+
+<body>
+
+<nav>
+    <h2>AI Meeting Summarizer</h2>
+    <button onclick="window.location.href='/feedback/'">Feedback</button>
+</nav>
+
+<div class="container">
+
+    <!-- LEFT -->
+    <div class="left">
+        <textarea id="text" placeholder="Paste meeting transcript..."></textarea>
+
+        <input type="file" id="file">
+
+        <button id="mic" type="button">🎤 Record (5s)</button>
+
+        <button type="button" onclick="sendData()">Generate Summary</button>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="right">
+        <div class="card">
+            <h3>Summary</h3>
+
+            <div id="loader" style="display:none;" class="loader"></div>
+
+            <p id="output">No summary yet</p>
+        </div>
+    </div>
+
+</div>
+
+{% comment %} <!-- 🔥 FEEDBACK MODAL -->
+<div id="feedbackModal" class="modal">
+    <div class="modal-content">
+        <h3>Feedback</h3>
+        <textarea id="feedbackText" placeholder="Write your feedback..." style="width:100%; height:100px;"></textarea>
+
+        <button onclick="submitFeedback()">Submit</button>
+        <button onclick="closeFeedback()">Close</button>
+    </div>
+</div> {% endcomment %}
+
+<div class="feedback-section">
+    <h3>Recent Feedback</h3>
+
+    <div class="feedback-container">
+        {% for fb in feedbacks %}
+            <div class="feedback-card">
+                <b>{{ fb.name }}</b>
+                <p>{{ fb.message }}</p>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+
+// 🔥 TYPING ANIMATION
+function typeText(text) {
+    let i = 0;
+    const output = document.getElementById("output");
+    output.innerHTML = "";
+
+    const interval = setInterval(() => {
+        if (i < text.length) {
+            output.innerHTML += text.charAt(i);
+            i++;
+        } else {
+            clearInterval(interval);
+        }
+    }, 15);
+}
+
+
+// 🔥 MAIN FUNCTION
+async function sendData() {
+    const text = document.getElementById("text").value;
+    const fileInput = document.getElementById("file").files[0];
+
+    const loader = document.getElementById("loader");
+    const output = document.getElementById("output");
+
+    loader.style.display = "block";
+    output.innerHTML = "Generating AI summary...";
+
+    const formData = new FormData();
+    formData.append("text_input", text);
+
+    if (fileInput) {
+        formData.append("file", fileInput);
+    }
+
+    try {
+        const response = await fetch("/", {
+            method: "POST",
+            headers: {
+                "X-CSRFToken": getCookie("csrftoken")
+            },
+            body: formData
+        });
+
+        const data = await response.json();
+
+        typeText(data.summary);
+
+    } catch (error) {
+        output.innerHTML = "Error connecting to server";
+    }
+
+    loader.style.display = "none";
+}
+
+
+// 🔐 CSRF helper
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie) {
+        const cookies = document.cookie.split(';');
+        for (let cookie of cookies) {
+            cookie = cookie.trim();
+            if (cookie.startsWith(name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            }
+        }
+    }
+    return cookieValue;
+}
+
+
+// 🎤 MIC RECORDING
+let mediaRecorder;
+let audioChunks = [];
+
+document.getElementById("mic").onclick = async () => {
+    const btn = document.getElementById("mic");
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    mediaRecorder = new MediaRecorder(stream);
+
+    audioChunks = [];
+
+    mediaRecorder.ondataavailable = e => {
+        audioChunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = () => {
+        const blob = new Blob(audioChunks, { type: "audio/wav" });
+        const file = new File([blob], "recording.wav");
+
+        const input = document.getElementById("file");
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+
+        btn.classList.remove("mic-active");
+    };
+
+    mediaRecorder.start();
+    btn.classList.add("mic-active");
+
+    setTimeout(() => {
+        mediaRecorder.stop();
+    }, 5000);
+};
+
+
+// 🔥 FEEDBACK FUNCTIONS
+function openFeedback() {
+    document.getElementById("feedbackModal").style.display = "block";
+}
+
+function closeFeedback() {
+    document.getElementById("feedbackModal").style.display = "none";
+}
+
+function submitFeedback() {
+    const text = document.getElementById("feedbackText").value;
+
+    if (!text) {
+        alert("Please enter feedback");
+        return;
+    }
+
+    alert("Feedback submitted: " + text);
+
+    document.getElementById("feedbackText").value = "";
+    closeFeedback();
+}
+
+</script>
+
+</body>
+</html>
